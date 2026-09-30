@@ -5,3 +5,10 @@ node_modules/
 dist/
 .aws/
 *.logs
+
+# Large local datasets
+data/raw/
+data/chicago_scooter_july2024_full.csv
+# Large local datasets
+data/raw/
+data/chicago_scooter_july2024_full.csv
