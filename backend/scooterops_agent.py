@@ -3,6 +3,7 @@ import json
 import re
 import subprocess
 import sys
+import os
 
 from pathlib import Path
 
@@ -33,11 +34,15 @@ AWS_REGION = "us-east-1"
 # execution role instead of this local profile.
 # --------------------------------------------------
 
-session = boto3.Session(
-    profile_name=AWS_PROFILE,
-    region_name=AWS_REGION,
-)
-
+if os.getenv("SCOOTEROPS_ENV") == "production":
+    session = boto3.Session(
+        region_name=AWS_REGION,
+    )
+else:
+    session = boto3.Session(
+        profile_name=AWS_PROFILE,
+        region_name=AWS_REGION,
+    )
 
 # Prevent inherited local proxy settings from
 # affecting AWS credential refresh or Bedrock.
