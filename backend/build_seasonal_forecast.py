@@ -8,7 +8,10 @@ SUPPLY_FILE = "data/live_supply_by_area.csv"
 OUTPUT_FILE = "data/lime_current_imbalance.csv"
 
 
-# Load seasonal demand-share forecast and live supply
+# --------------------------------------------------
+# Load seasonal demand-share forecast
+# --------------------------------------------------
+
 forecast = pd.read_csv(FORECAST_FILE)
 supply = pd.read_csv(SUPPLY_FILE)
 
@@ -19,7 +22,10 @@ forecast = forecast.rename(
 )
 
 
-# Current Chicago time
+# --------------------------------------------------
+# Current Chicago operating period
+# --------------------------------------------------
+
 now = datetime.now(
     ZoneInfo("America/Chicago")
 )
@@ -27,8 +33,6 @@ now = datetime.now(
 weekday = now.weekday()
 hour = now.hour
 
-
-# Get forecast for current weekday/hour
 current = forecast[
     (forecast["weekday"] == weekday)
     & (forecast["hour"] == hour)
@@ -41,7 +45,10 @@ if current.empty:
     )
 
 
+# --------------------------------------------------
 # Join live Lime supply
+# --------------------------------------------------
+
 current = current.merge(
     supply,
     on="community",
@@ -55,10 +62,16 @@ current["available_scooters"] = (
 )
 
 
+# --------------------------------------------------
 # Normalize demand shares
-demand_total = current[
-    "predicted_demand_share"
-].sum()
+#
+# Defensive normalization ensures the analyzed
+# zones sum exactly to 100%.
+# --------------------------------------------------
+
+demand_total = (
+    current["predicted_demand_share"].sum()
+)
 
 if demand_total <= 0:
     raise RuntimeError(
@@ -71,7 +84,10 @@ current["predicted_demand_share"] = (
 )
 
 
+# --------------------------------------------------
 # Current supply share
+# --------------------------------------------------
+
 total_supply = (
     current["available_scooters"].sum()
 )
@@ -87,29 +103,52 @@ current["supply_share"] = (
 )
 
 
-# Positive gap = relatively under-supplied
-# Negative gap = relatively over-supplied
+# --------------------------------------------------
+# Spatial imbalance
+#
+# Positive share_gap:
+# demand share > supply share
+# destination candidate
+#
+# Negative share_gap:
+# supply share > demand share
+# source candidate
+# --------------------------------------------------
+
 current["share_gap"] = (
     current["predicted_demand_share"]
     - current["supply_share"]
 )
 
 
-# Convert share gap into fleet-equivalent units.
-# This is NOT a literal move requirement.
+# Convert the share gap into an intuitive
+# fleet-equivalent quantity.
+#
+# Example:
+# +0.05 share gap with 4,000 scooters
+# = +200 scooter-equivalent gap
+#
+# This does NOT mean 200 scooters must be moved.
+# The optimizer still has its separate move budget.
 current["scooter_equivalent_gap"] = (
     current["share_gap"]
     * total_supply
 )
 
 
-# Downstream optimizer score
+# Keep a simple need score for downstream optimization.
+#
+# Positive = needs relative supply
+# Negative = has relative surplus
 current["need_score"] = (
     current["scooter_equivalent_gap"]
 )
 
 
+# --------------------------------------------------
 # Human-readable percentages
+# --------------------------------------------------
+
 current["predicted_demand_share_pct"] = (
     current["predicted_demand_share"] * 100
 )
@@ -123,21 +162,30 @@ current["share_gap_pct_points"] = (
 )
 
 
-# Highest need first
+# --------------------------------------------------
+# Sort highest need first
+# --------------------------------------------------
+
 current = current.sort_values(
     "need_score",
     ascending=False
 )
 
 
-# Save output
+# --------------------------------------------------
+# Save
+# --------------------------------------------------
+
 current.to_csv(
     OUTPUT_FILE,
     index=False
 )
 
 
-# Display
+# --------------------------------------------------
+# Console output
+# --------------------------------------------------
+
 print(
     "Chicago time:",
     now.strftime("%Y-%m-%d %H:%M")

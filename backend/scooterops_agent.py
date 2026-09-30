@@ -3,98 +3,250 @@ import json
 import re
 import subprocess
 import sys
+
 from pathlib import Path
 
 import pandas as pd
 
+from botocore.config import Config
+
+
+# --------------------------------------------------
+# Paths / configuration
+# --------------------------------------------------
+
 ROOT = Path(__file__).resolve().parent.parent
 
-MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-
-session = boto3.Session(
-    profile_name="scooterops",
-    region_name="us-east-1"
+MODEL_ID = (
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 )
 
-client = session.client("bedrock-runtime")
+AWS_PROFILE = "scooterops"
+AWS_REGION = "us-east-1"
 
+
+# --------------------------------------------------
+# AWS session
+#
+# Local development uses the scooterops SSO profile.
+# Production AWS deployment will later use an IAM
+# execution role instead of this local profile.
+# --------------------------------------------------
+
+session = boto3.Session(
+    profile_name=AWS_PROFILE,
+    region_name=AWS_REGION,
+)
+
+
+# Prevent inherited local proxy settings from
+# affecting AWS credential refresh or Bedrock.
+proxy_free_config = Config(
+    proxies={}
+)
+
+# Apply proxy-free config to clients created through
+# the underlying botocore session.
+try:
+    session._session.set_default_client_config(
+        proxy_free_config
+    )
+except AttributeError:
+    pass
+
+
+client = session.client(
+    "bedrock-runtime",
+    config=proxy_free_config,
+)
+
+
+# --------------------------------------------------
+# Utility: execute deterministic backend scripts
+# --------------------------------------------------
 
 def run_script(script):
+
     result = subprocess.run(
-        [sys.executable, script],
+        [
+            sys.executable,
+            script,
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,
-        check=True
+        check=True,
     )
 
     return result.stdout
 
 
-# --------------------------------------------------
+# ==================================================
 # TOOL 1
-# Refresh live fleet + demand-pressure analysis
-# --------------------------------------------------
+# Refresh live fleet + seasonal demand-share analysis
+# ==================================================
 
 def refresh_fleet_analysis():
 
-    run_script("backend/live_supply.py")
-    run_script("backend/build_lime_imbalance.py")
-    run_script("backend/prepare_rebalancing.py")
+    run_script(
+        "backend/live_supply.py"
+    )
+
+    run_script(
+        "backend/build_lime_imbalance.py"
+    )
+
+    run_script(
+        "backend/prepare_rebalancing.py"
+    )
 
     df = pd.read_csv(
-        ROOT / "data/rebalancing_candidates.csv"
+        ROOT
+        / "data/rebalancing_candidates.csv"
     )
+
 
     destinations = (
-        df[df["need_score"] > 0]
-        .sort_values("need_score", ascending=False)
+        df[
+            df["need_score"] > 0
+        ]
+        .sort_values(
+            "need_score",
+            ascending=False,
+        )
         .head(5)
     )
+
 
     sources = (
-        df[df["need_score"] < 0]
-        .sort_values("need_score")
+        df[
+            df["need_score"] < 0
+        ]
+        .sort_values(
+            "need_score"
+        )
         .head(5)
     )
 
-    return {
-        "available_scooters_in_analyzed_zones":
-            int(df["available_scooters"].sum()),
 
-        "predicted_hourly_demand":
-            round(float(df["predicted_demand"].sum()), 2),
+    return {
+
+        "available_scooters_in_analyzed_zones":
+            int(
+                df[
+                    "available_scooters"
+                ].sum()
+            ),
+
+        "forecast_method":
+            (
+                "Fall seasonal Lime "
+                "spatial demand share"
+            ),
 
         "highest_need_zones": [
+
             {
-                "community": row["community"],
-                "predicted_demand":
-                    round(float(row["predicted_demand"]), 2),
+                "community":
+                    row["community"],
+
+                "predicted_demand_share_pct":
+                    round(
+                        float(
+                            row[
+                                "predicted_demand_share_pct"
+                            ]
+                        ),
+                        2,
+                    ),
+
+                "supply_share_pct":
+                    round(
+                        float(
+                            row[
+                                "supply_share_pct"
+                            ]
+                        ),
+                        2,
+                    ),
+
+                "share_gap_pct_points":
+                    round(
+                        float(
+                            row[
+                                "share_gap_pct_points"
+                            ]
+                        ),
+                        2,
+                    ),
+
                 "available_scooters":
-                    int(row["available_scooters"]),
-                "need_score":
-                    round(float(row["need_score"]), 3)
+                    int(
+                        row[
+                            "available_scooters"
+                        ]
+                    ),
             }
-            for _, row in destinations.iterrows()
+
+            for _, row
+            in destinations.iterrows()
         ],
 
+
         "strongest_source_zones": [
+
             {
-                "community": row["community"],
+                "community":
+                    row["community"],
+
+                "predicted_demand_share_pct":
+                    round(
+                        float(
+                            row[
+                                "predicted_demand_share_pct"
+                            ]
+                        ),
+                        2,
+                    ),
+
+                "supply_share_pct":
+                    round(
+                        float(
+                            row[
+                                "supply_share_pct"
+                            ]
+                        ),
+                        2,
+                    ),
+
+                "share_gap_pct_points":
+                    round(
+                        float(
+                            row[
+                                "share_gap_pct_points"
+                            ]
+                        ),
+                        2,
+                    ),
+
                 "available_scooters":
-                    int(row["available_scooters"]),
-                "need_score":
-                    round(float(row["need_score"]), 3)
+                    int(
+                        row[
+                            "available_scooters"
+                        ]
+                    ),
             }
-            for _, row in sources.iterrows()
-        ]
+
+            for _, row
+            in sources.iterrows()
+        ],
     }
 
 
-# --------------------------------------------------
+# ==================================================
 # TOOL 2
 # Run deterministic MILP optimizer
-# --------------------------------------------------
+# ==================================================
 
 def optimize_rebalancing():
 
@@ -102,153 +254,368 @@ def optimize_rebalancing():
         "backend/optimize_rebalancing.py"
     )
 
+
     plan = pd.read_csv(
-        ROOT / "data/rebalancing_plan.csv"
+        ROOT
+        / "data/rebalancing_plan.csv"
     )
+
 
     moved_match = re.search(
         r"Total scooters moved:\s*([\d.]+)",
-        output
+        output,
     )
+
 
     km_match = re.search(
-        r"Total scooter-km:\s*([\d.]+)",
-        output
+        r"Total centroid scooter-km:\s*([\d.]+)",
+        output,
     )
+
+
+    before_gap_match = re.search(
+        (
+            r"Mean absolute share gap before:"
+            r"\s*([\d.]+)"
+        ),
+        output,
+    )
+
+
+    after_gap_match = re.search(
+        (
+            r"Mean absolute share gap after:"
+            r"\s*([\d.]+)"
+        ),
+        output,
+    )
+
 
     improvement_match = re.search(
-        r"Pressure imbalance improvement:\s*([\d.]+)",
-        output
+        (
+            r"Spatial imbalance improvement:"
+            r"\s*([\d.]+)"
+        ),
+        output,
     )
 
+
     return {
+
         "moves": [
+
             {
-                "source": row["source"],
-                "destination": row["destination"],
-                "scooters": int(row["scooters"]),
+                "source":
+                    row["source"],
+
+                "destination":
+                    row["destination"],
+
+                "scooters":
+                    int(
+                        row["scooters"]
+                    ),
+
                 "centroid_distance_km":
-                    round(float(row["distance_km"]), 2)
+                    round(
+                        float(
+                            row[
+                                "distance_km"
+                            ]
+                        ),
+                        2,
+                    ),
             }
-            for _, row in plan.iterrows()
+
+            for _, row
+            in plan.iterrows()
         ],
 
+
         "total_scooters_moved":
-            int(float(moved_match.group(1)))
-            if moved_match else None,
+            (
+                int(
+                    float(
+                        moved_match.group(1)
+                    )
+                )
+                if moved_match
+                else None
+            ),
+
 
         "total_centroid_scooter_km":
-            float(km_match.group(1))
-            if km_match else None,
+            (
+                float(
+                    km_match.group(1)
+                )
+                if km_match
+                else None
+            ),
 
-        "pressure_imbalance_improvement_pct":
-            float(improvement_match.group(1))
-            if improvement_match else None
+
+        "mean_absolute_share_gap_before_pp":
+            (
+                float(
+                    before_gap_match.group(1)
+                )
+                if before_gap_match
+                else None
+            ),
+
+
+        "mean_absolute_share_gap_after_pp":
+            (
+                float(
+                    after_gap_match.group(1)
+                )
+                if after_gap_match
+                else None
+            ),
+
+
+        "spatial_imbalance_improvement_pct":
+            (
+                float(
+                    improvement_match.group(1)
+                )
+                if improvement_match
+                else None
+            ),
     }
 
 
-# --------------------------------------------------
+# ==================================================
 # TOOL 3
 # Independently validate optimizer result
-# --------------------------------------------------
+# ==================================================
 
 def evaluate_plan():
 
     state = pd.read_csv(
-        ROOT / "data/rebalancing_candidates.csv"
-    ).set_index("community")
+        ROOT
+        / "data/rebalancing_candidates.csv"
+    ).set_index(
+        "community"
+    )
+
 
     plan = pd.read_csv(
-        ROOT / "data/rebalancing_plan.csv"
+        ROOT
+        / "data/rebalancing_plan.csv"
     )
+
 
     before = state.copy()
     after = state.copy()
 
     errors = []
 
-    total_moved = int(plan["scooters"].sum())
+
+    total_moved = int(
+        plan["scooters"].sum()
+    )
+
+
+    # ----------------------------------------------
+    # Check move budget
+    # ----------------------------------------------
 
     if total_moved > 50:
+
         errors.append(
             "Rebalancing budget exceeded."
         )
 
+
+    # ----------------------------------------------
+    # Apply proposed movements
+    # ----------------------------------------------
+
     for _, move in plan.iterrows():
 
         source = move["source"]
-        destination = move["destination"]
-        scooters = int(move["scooters"])
+
+        destination = (
+            move["destination"]
+        )
+
+        scooters = int(
+            move["scooters"]
+        )
+
 
         if source not in after.index:
+
             errors.append(
                 f"Unknown source zone: {source}"
             )
+
             continue
 
+
         if destination not in after.index:
+
             errors.append(
-                f"Unknown destination zone: {destination}"
+                (
+                    "Unknown destination zone: "
+                    f"{destination}"
+                )
             )
+
             continue
+
 
         after.loc[
             source,
-            "available_scooters"
+            "available_scooters",
         ] -= scooters
+
 
         after.loc[
             destination,
-            "available_scooters"
+            "available_scooters",
         ] += scooters
 
+
+    # ----------------------------------------------
+    # Prevent impossible negative inventory
+    # ----------------------------------------------
+
     if (
-        after["available_scooters"] < 0
+        after[
+            "available_scooters"
+        ] < 0
     ).any():
+
         errors.append(
-            "A source zone would have negative supply."
+            (
+                "A source zone would have "
+                "negative supply."
+            )
         )
 
-    target_pressure = (
-        before["predicted_demand"].sum()
-        /
-        before["available_scooters"].sum()
+
+    # ----------------------------------------------
+    # Fleet conservation
+    # ----------------------------------------------
+
+    total_before = (
+        before[
+            "available_scooters"
+        ].sum()
     )
 
-    before_pressure = (
-        before["predicted_demand"]
-        /
-        before["available_scooters"]
+
+    total_after = (
+        after[
+            "available_scooters"
+        ].sum()
     )
 
-    after_pressure = (
-        after["predicted_demand"]
-        /
-        after["available_scooters"]
+
+    if total_before != total_after:
+
+        errors.append(
+            "Total fleet supply changed."
+        )
+
+
+    # ----------------------------------------------
+    # Calculate supply shares before / after
+    # ----------------------------------------------
+
+    before_supply_share = (
+        before[
+            "available_scooters"
+        ]
+        / total_before
     )
+
+
+    after_supply_share = (
+        after[
+            "available_scooters"
+        ]
+        / total_after
+    )
+
+
+    # ----------------------------------------------
+    # Compare supply distribution against the
+    # seasonal predicted demand distribution.
+    #
+    # Metric:
+    # mean absolute percentage-point gap
+    # ----------------------------------------------
 
     before_gap = (
-        before_pressure - target_pressure
-    ).abs().mean()
 
-    after_gap = (
-        after_pressure - target_pressure
-    ).abs().mean()
-
-    improvement = (
-        (before_gap - after_gap)
-        / before_gap
+        (
+            before[
+                "predicted_demand_share"
+            ]
+            - before_supply_share
+        )
+        .abs()
+        .mean()
         * 100
     )
 
-    if improvement <= 0:
-        errors.append(
-            "Plan does not improve demand-pressure balance."
+
+    after_gap = (
+
+        (
+            after[
+                "predicted_demand_share"
+            ]
+            - after_supply_share
+        )
+        .abs()
+        .mean()
+        * 100
+    )
+
+
+    # ----------------------------------------------
+    # Improvement
+    # ----------------------------------------------
+
+    if before_gap > 0:
+
+        improvement = (
+
+            (
+                before_gap
+                - after_gap
+            )
+            / before_gap
+            * 100
         )
 
+    else:
+
+        improvement = 0.0
+
+
+    if improvement <= 0:
+
+        errors.append(
+            (
+                "Plan does not improve spatial "
+                "supply-demand balance."
+            )
+        )
+
+
     return {
+
         "status":
-            "APPROVED" if not errors else "REJECTED",
+            (
+                "APPROVED"
+                if not errors
+                else "REJECTED"
+            ),
 
         "constraints_passed":
             len(errors) == 0,
@@ -259,15 +626,35 @@ def evaluate_plan():
         "move_budget":
             50,
 
-        "pressure_imbalance_improvement_pct":
-            round(float(improvement), 2),
+        "mean_absolute_share_gap_before_pp":
+            round(
+                float(before_gap),
+                2,
+            ),
+
+        "mean_absolute_share_gap_after_pp":
+            round(
+                float(after_gap),
+                2,
+            ),
+
+        "spatial_imbalance_improvement_pct":
+            round(
+                float(improvement),
+                2,
+            ),
 
         "errors":
-            errors
+            errors,
     }
 
 
+# ==================================================
+# Tool registry
+# ==================================================
+
 TOOLS = {
+
     "refresh_fleet_analysis":
         refresh_fleet_analysis,
 
@@ -275,68 +662,130 @@ TOOLS = {
         optimize_rebalancing,
 
     "evaluate_plan":
-        evaluate_plan
+        evaluate_plan,
 }
 
 
+# ==================================================
+# Bedrock tool definitions
+# ==================================================
+
 tool_config = {
+
     "tools": [
+
         {
             "toolSpec": {
-                "name": "refresh_fleet_analysis",
-                "description": (
-                    "Refresh the real Lime scooter fleet, "
-                    "combine it with the demand forecast, "
-                    "and identify high-need and surplus zones."
-                ),
+
+                "name":
+                    "refresh_fleet_analysis",
+
+                "description":
+                    (
+                        "Refresh the real Lime scooter "
+                        "fleet, compare current supply "
+                        "share with the fall seasonal "
+                        "demand-share forecast, and "
+                        "identify relatively under- "
+                        "and over-supplied zones."
+                    ),
+
                 "inputSchema": {
+
                     "json": {
-                        "type": "object",
-                        "properties": {},
-                        "additionalProperties": False
+
+                        "type":
+                            "object",
+
+                        "properties":
+                            {},
+
+                        "additionalProperties":
+                            False,
                     }
-                }
+                },
             }
         },
+
+
         {
             "toolSpec": {
-                "name": "optimize_rebalancing",
-                "description": (
-                    "Run the deterministic mixed-integer "
-                    "rebalancing optimizer. It chooses how "
-                    "to move at most 50 scooters while "
-                    "minimizing centroid-distance movement."
-                ),
+
+                "name":
+                    "optimize_rebalancing",
+
+                "description":
+                    (
+                        "Run the deterministic "
+                        "mixed-integer rebalancing "
+                        "optimizer. It moves at most "
+                        "50 scooters and minimizes "
+                        "community-area centroid "
+                        "distance while reallocating "
+                        "supply toward relatively "
+                        "under-supplied zones."
+                    ),
+
                 "inputSchema": {
+
                     "json": {
-                        "type": "object",
-                        "properties": {},
-                        "additionalProperties": False
+
+                        "type":
+                            "object",
+
+                        "properties":
+                            {},
+
+                        "additionalProperties":
+                            False,
                     }
-                }
+                },
             }
         },
+
+
         {
             "toolSpec": {
-                "name": "evaluate_plan",
-                "description": (
-                    "Independently validate the proposed "
-                    "rebalancing plan against movement "
-                    "constraints and measure whether demand "
-                    "pressure improves."
-                ),
+
+                "name":
+                    "evaluate_plan",
+
+                "description":
+                    (
+                        "Independently validate the "
+                        "rebalancing plan. Check the "
+                        "50-scooter move budget, "
+                        "source inventory, fleet "
+                        "conservation, and whether "
+                        "the plan reduces the spatial "
+                        "gap between predicted demand "
+                        "share and scooter supply "
+                        "share."
+                    ),
+
                 "inputSchema": {
+
                     "json": {
-                        "type": "object",
-                        "properties": {},
-                        "additionalProperties": False
+
+                        "type":
+                            "object",
+
+                        "properties":
+                            {},
+
+                        "additionalProperties":
+                            False,
                     }
-                }
+                },
             }
-        }
+        },
     ]
 }
 
+
+# ==================================================
+# Agent instructions
+# ==================================================
 
 system_prompt = """
 You are ScooterOps, an autonomous fleet operations agent.
@@ -344,131 +793,286 @@ You are ScooterOps, an autonomous fleet operations agent.
 Your job is to analyze the current Lime scooter fleet in Chicago
 and produce a validated rebalancing recommendation.
 
+The demand model forecasts the spatial distribution of next-hour
+Lime demand across analyzed Chicago community areas using
+same-season fall historical Lime trip patterns.
+
+The operational comparison is:
+
+predicted demand share by zone
+versus
+current scooter supply share by zone.
+
 Operational numbers must come only from tools.
 
 Required workflow:
+
 1. Refresh the live fleet analysis.
-2. Run the deterministic optimizer.
-3. Evaluate the generated plan.
-4. Only recommend the plan if evaluation returns APPROVED.
+2. Identify relatively under-supplied and over-supplied zones.
+3. Run the deterministic MILP optimizer.
+4. Independently evaluate the generated plan.
+5. Only recommend the plan if evaluation returns APPROVED.
 
-Do not invent scooter counts, distances, demand, improvements,
-or destinations.
+Do not invent:
 
-Distance values are community-area centroid-distance proxies,
-not road-route distances.
+- scooter counts
+- demand shares
+- supply shares
+- share gaps
+- movement counts
+- distances
+- improvement percentages
+- destinations
+- validation results
 
-In the final answer be concise.
+Distance values are Chicago community-area centroid-distance
+proxies. They are not road-route distances.
+
+The optimizer has a maximum rebalancing budget of 50 scooters.
+
+In the final answer, be concise.
+
 State:
-- the highest-pressure zones
+
+- the most under-supplied zones
 - the recommended scooter movements
 - total scooters moved
 - centroid scooter-km
-- measured pressure-imbalance improvement
+- mean absolute share gap before and after
+- measured spatial supply-demand imbalance improvement
 - validation status
 """
 
 
+# ==================================================
+# Initial user request
+# ==================================================
+
 messages = [
+
     {
-        "role": "user",
+        "role":
+            "user",
+
         "content": [
+
             {
                 "text":
-                    "Analyze the current fleet and produce "
-                    "a validated rebalancing recommendation."
+                    (
+                        "Analyze the current fleet "
+                        "and produce a validated "
+                        "rebalancing recommendation."
+                    )
             }
-        ]
+        ],
     }
 ]
 
 
+# ==================================================
+# Bedrock agent loop
+# ==================================================
+
 while True:
 
     response = client.converse(
+
         modelId=MODEL_ID,
+
         system=[
             {
-                "text": system_prompt
+                "text":
+                    system_prompt
             }
         ],
+
         messages=messages,
+
         toolConfig=tool_config,
+
         inferenceConfig={
-            "maxTokens": 800,
-            "temperature": 0
-        }
+            "maxTokens": 1000,
+            "temperature": 0,
+        },
     )
 
-    message = response["output"]["message"]
-    messages.append(message)
 
-    if response["stopReason"] != "tool_use":
+    message = (
+        response[
+            "output"
+        ][
+            "message"
+        ]
+    )
+
+
+    messages.append(
+        message
+    )
+
+
+    if (
+        response[
+            "stopReason"
+        ]
+        != "tool_use"
+    ):
+
         break
+
 
     tool_results = []
 
-    for content in message["content"]:
+
+    for content in message[
+        "content"
+    ]:
 
         if "toolUse" not in content:
+
             continue
 
-        tool_use = content["toolUse"]
 
-        name = tool_use["name"]
-        tool_use_id = tool_use["toolUseId"]
+        tool_use = (
+            content[
+                "toolUse"
+            ]
+        )
 
-        print(f"\nAGENT TOOL CALL -> {name}")
+
+        name = (
+            tool_use[
+                "name"
+            ]
+        )
+
+
+        tool_use_id = (
+            tool_use[
+                "toolUseId"
+            ]
+        )
+
+
+        print(
+            f"\nAGENT TOOL CALL -> {name}"
+        )
+
 
         try:
-            result = TOOLS[name]()
+
+            if name not in TOOLS:
+
+                raise RuntimeError(
+                    (
+                        "Unknown tool requested: "
+                        f"{name}"
+                    )
+                )
+
+
+            result = (
+                TOOLS[
+                    name
+                ]()
+            )
+
 
             print(
                 json.dumps(
                     result,
-                    indent=2
+                    indent=2,
                 )
             )
 
+
             tool_result = {
-                "toolUseId": tool_use_id,
+
+                "toolUseId":
+                    tool_use_id,
+
                 "content": [
+
                     {
-                        "json": result
+                        "json":
+                            result
                     }
-                ]
+                ],
             }
+
 
         except Exception as exc:
 
+            print(
+                f"TOOL ERROR: {exc}"
+            )
+
+
             tool_result = {
-                "toolUseId": tool_use_id,
+
+                "toolUseId":
+                    tool_use_id,
+
                 "content": [
+
                     {
-                        "text": str(exc)
+                        "text":
+                            str(exc)
                     }
                 ],
-                "status": "error"
+
+                "status":
+                    "error",
             }
 
+
         tool_results.append(
+
             {
-                "toolResult": tool_result
+                "toolResult":
+                    tool_result
             }
         )
 
+
     messages.append(
+
         {
-            "role": "user",
-            "content": tool_results
+            "role":
+                "user",
+
+            "content":
+                tool_results,
         }
     )
 
 
-print("\n" + "=" * 60)
-print("SCOOTEROPS AGENT RECOMMENDATION")
-print("=" * 60)
+# ==================================================
+# Final recommendation
+# ==================================================
 
-for content in message["content"]:
+print(
+    "\n"
+    + "=" * 60
+)
+
+print(
+    "SCOOTEROPS AGENT RECOMMENDATION"
+)
+
+print(
+    "=" * 60
+)
+
+
+for content in message[
+    "content"
+]:
+
     if "text" in content:
-        print(content["text"])
+
+        print(
+            content[
+                "text"
+            ]
+        )

@@ -4,7 +4,9 @@ import pandas as pd
 
 LIVE_URL = "https://data.lime.bike/api/partners/v2/gbfs/chicago/free_bike_status"
 
-payload = requests.get(LIVE_URL, timeout=30).json()
+http = requests.Session()
+http.trust_env = False
+payload = http.get(LIVE_URL, timeout=30).json()
 bikes = pd.DataFrame(payload["data"]["bikes"])
 
 bikes = bikes[

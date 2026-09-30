@@ -1,0 +1,7 @@
+boto3
+fastapi
+geopandas
+pandas
+requests
+scipy
+uvicorn[standard]
