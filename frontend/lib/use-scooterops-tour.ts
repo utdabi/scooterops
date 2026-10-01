@@ -7,10 +7,11 @@ const TOUR_STORAGE_KEY = "scooterops-tour-seen"
 
 interface UseScooterOpsTourOptions {
   isDashboardReady: boolean
+  showBeforeFleet: () => void
   showProposedRoutes: () => void
 }
 
-export function useScooterOpsTour({ isDashboardReady, showProposedRoutes }: UseScooterOpsTourOptions) {
+export function useScooterOpsTour({ isDashboardReady, showBeforeFleet, showProposedRoutes }: UseScooterOpsTourOptions) {
   const activeTour = useRef<Driver | null>(null)
   const hasCheckedFirstVisit = useRef(false)
 
@@ -37,6 +38,7 @@ export function useScooterOpsTour({ isDashboardReady, showProposedRoutes }: UseS
       steps: [
         {
           element: '[data-tour="fleet-map"]',
+          onHighlightStarted: showBeforeFleet,
           popover: {
             title: "Live fleet map",
             description: "Live Lime scooter supply and fall seasonal demand shares are mapped across Chicago community areas.",
@@ -86,7 +88,7 @@ export function useScooterOpsTour({ isDashboardReady, showProposedRoutes }: UseS
 
     activeTour.current = tour
     tour.drive()
-  }, [showProposedRoutes])
+  }, [showBeforeFleet, showProposedRoutes])
 
   useEffect(() => {
     if (!isDashboardReady || hasCheckedFirstVisit.current) return

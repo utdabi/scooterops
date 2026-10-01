@@ -32,9 +32,11 @@ export default function Page() {
     void refreshPlan()
   }, [refreshPlan])
 
+  const showBeforeFleet = useCallback(() => setMode("before"), [])
   const showProposedRoutes = useCallback(() => setMode("proposed"), [])
   const startTour = useScooterOpsTour({
     isDashboardReady: !isRefreshing && analysis !== null,
+    showBeforeFleet,
     showProposedRoutes,
   })
 
