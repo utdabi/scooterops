@@ -1,0 +1,22 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/scooterops-frontend
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
+
+  build:
+    commands:
+      - echo Building ScooterOps frontend...
+      - cd frontend
+      - docker build -t scooterops-frontend:latest .
+      - docker tag scooterops-frontend:latest $REPOSITORY_URI:latest
+
+  post_build:
+    commands:
+      - echo Pushing frontend image...
+      - docker push $REPOSITORY_URI:latest
+      - echo Frontend image pushed successfully
