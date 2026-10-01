@@ -1,140 +1,67 @@
 # ScooterOps
 
-**Autonomous scooter fleet rebalancing for Chicago**
+Live scooter fleet intelligence for Chicago.
 
-ScooterOps continuously combines live Lime fleet supply with historical seasonal demand patterns, identifies where relative demand is likely to outpace supply, generates an optimized 50-scooter rebalancing plan, and independently validates that the plan improves fleet balance.
+ScooterOps combines **live Lime GBFS supply**, **historical seasonal demand**, a **50-scooter MILP rebalancing optimizer**, independent validation, and **Amazon Bedrock** orchestration to produce an operator-ready fleet movement plan.
 
-## Live Demo
-
-**Production app:**  
+**Live app:**  
 https://sc-a24edf9151b2402b82e78fb9aa06fd49.ecs.us-east-2.on.aws/
 
-The application is deployed on AWS using Amazon ECS Express Mode.
-
-## What It Does
-
-ScooterOps runs an end-to-end fleet operations workflow:
-
-1. Scans the live Lime GBFS feed for currently available scooters.
-2. Forecasts spatial demand share across selected Chicago community areas using historical Fall Lime trip data.
-3. Compares forecast demand share with current live supply share.
-4. Identifies relatively over-supplied and under-supplied areas.
-5. Solves a mixed-integer optimization problem for a fixed 50-scooter movement budget.
-6. Independently validates fleet conservation, source inventory, movement budget, and improvement in spatial imbalance.
-7. Uses Amazon Bedrock to orchestrate the workflow and return a validated operator-ready plan.
-
-Live results change as fleet supply and time-of-day demand patterns change.
-
-## Architecture
+## How it works
 
 ```text
-Live Lime GBFS supply
-        +
-Historical Fall Lime trips
-        ↓
-Seasonal spatial demand-share forecast
-        ↓
-Demand share vs live supply share
-        ↓
+Live Lime supply
+      +
+Historical Fall trips
+      ↓
+Seasonal demand-share forecast
+      ↓
+Demand vs supply gap
+      ↓
 50-scooter MILP optimizer
-        ↓
+      ↓
 Independent validator
-        ↓
-Amazon Bedrock agent orchestration
-        ↓
-FastAPI backend
-        ↓
+      ↓
+Amazon Bedrock
+      ↓
 Next.js command center
-        ↓
-Amazon ECS Express Mode
 ```
 
-## Demand Forecast
+When **Refresh Plan** runs, ScooterOps:
 
-ScooterOps forecasts **where demand is distributed**, rather than attempting to predict an absolute number of trips.
+1. Reads the current Lime fleet.
+2. Forecasts demand share across 10 Chicago community areas.
+3. Identifies relatively over- and under-supplied areas.
+4. Optimizes exactly 50 scooter movements.
+5. Validates inventory, fleet conservation, movement budget, and imbalance improvement.
+6. Returns the plan for operator review.
 
-For each analyzed community area it estimates:
+## Forecast validation
 
-```text
-predicted demand share
-vs
-current live supply share
-```
+The production model uses Fall 2023 and Fall 2024 Lime trips and was evaluated on held-out Fall 2025 data.
 
-The difference is the spatial supply-demand gap.
+| Model | Mean absolute demand-share error |
+|---|---:|
+| July 2024 baseline | 2.69 pp |
+| Fall 2024 benchmark | 2.60 pp |
+| **Fall 2023–2024 model** | **2.37 pp** |
 
-A positive gap indicates that an area has less relative scooter supply than its predicted share of demand.
-
-A negative gap indicates relatively excess supply.
-
-### Historical validation
-
-The seasonal model was trained using Fall 2023 and Fall 2024 Lime trips and evaluated on a held-out Fall 2025 period.
-
-Mean absolute spatial demand-share error:
-
-```text
-July 2024 baseline:          2.69 percentage points
-Fall 2023-2024 model:       2.37 percentage points
-Fall 2024-only benchmark:   2.60 percentage points
-```
-
-On that Fall 2025 holdout, the same-season model reduced mean absolute spatial demand-share error by about **12% versus the July baseline**.
+On that holdout, the seasonal model reduced error by about **12% versus the July baseline**.
 
 ## Optimization
 
-The optimizer uses `scipy.optimize.milp` to determine scooter movements between relatively over-supplied and under-supplied areas.
+ScooterOps uses `scipy.optimize.milp`.
 
 Constraints include:
 
 - exactly 50 scooters moved
-- no source can provide more scooters than are available
-- fleet inventory is conserved
-- movements are integer-valued
-
-The objective minimizes movement distance while satisfying the rebalancing allocation.
-
-Distances are based on **Chicago community-area centroid distance**, not road-network driving distance.
-
-## Independent Validation
-
-A proposed plan is approved only when it passes checks for:
-
-- movement budget
-- source inventory
+- integer movements
+- source inventory limits
 - fleet conservation
-- spatial supply-demand gap improvement
 
-The validator compares mean absolute demand-share versus supply-share gap before and after the proposed movements.
+Distance is based on **community-area centroids**, not road-network distance.
 
-The UI labels the plan `APPROVED` only when all checks pass.
-
-## Amazon Bedrock
-
-Amazon Bedrock orchestrates three application tools:
-
-```text
-refresh_fleet_analysis
-optimize_rebalancing
-evaluate_plan
-```
-
-The agent coordinates live fleet analysis, optimization, and independent validation before returning the final recommendation.
-
-The application does **not** physically dispatch scooters. The generated plan is presented for operator review.
-
-## AWS Deployment
-
-ScooterOps uses:
-
-- **Amazon ECR** for backend and frontend container images
-- **AWS CodeBuild** to build container images from GitHub
-- **Amazon ECS Express Mode** for public container deployment
-- **AWS IAM task roles** for runtime Bedrock access
-- **Amazon Bedrock** for agent orchestration
-- **CloudWatch** for AWS service logging and observability
-
-Production flow:
+## AWS
 
 ```text
 GitHub
@@ -144,37 +71,28 @@ AWS CodeBuild
 Amazon ECR
   ↓
 Amazon ECS Express Mode
-  ↓
-Public HTTPS application
 ```
 
-## Technology
+AWS services used:
 
-### Backend
-
-- Python
-- FastAPI
-- SciPy MILP
-- pandas
-- GeoPandas / Shapely
-- boto3
 - Amazon Bedrock
+- Amazon ECS Express Mode
+- Amazon ECR
+- AWS CodeBuild
+- AWS IAM
+- Amazon CloudWatch
 
-### Frontend
+The frontend is Next.js. The backend is FastAPI.
 
-- Next.js 16
-- React 19
-- TypeScript
-- Tailwind CSS
-- driver.js
+## Built with Codex
 
-### Data
+Codex was used during development for implementation, debugging, testing, and AWS deployment.
 
-- Lime GBFS live fleet feed
-- City of Chicago historical scooter trip data
-- Chicago community-area boundaries
+One important iteration was replacing an initial July-based demand model after questioning whether it was appropriate for a Fall deployment. The final version uses same-season historical data and held-out validation.
 
-## Local Development
+The production application uses ECS IAM task-role credentials. The development environment was also connected to AWS through the AWS MCP setup.
+
+## Run locally
 
 Backend:
 
@@ -190,21 +108,11 @@ pnpm install
 pnpm dev -- --port 3000
 ```
 
-The frontend proxy uses:
-
-```text
-SCOOTEROPS_API_URL
-```
-
-to reach the production backend.
-
 ## Hackathon
 
 Built for **Zero to Shipped 2026**.
 
 **Category:** Workplace Efficiency  
 **Lane:** Startup
-
-ScooterOps demonstrates how live operational data, optimization, independent validation, and an AI agent can be combined into a deployable fleet-operations decision system.
 
 #workplace-efficiency #startup
