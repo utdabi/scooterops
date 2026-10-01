@@ -30,34 +30,6 @@ function rectsIntersect(a: Rect, b: Rect) {
   return a.left < b.left + b.width && a.left + a.width > b.left && a.top < b.top + b.height && a.top + a.height > b.top
 }
 
-function pointInRect(point: Point, rect: Rect) {
-  return point.x >= rect.left && point.x <= rect.left + rect.width && point.y >= rect.top && point.y <= rect.top + rect.height
-}
-
-function orientation(a: Point, b: Point, c: Point) {
-  return Math.sign((b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y))
-}
-
-function segmentsIntersect(a: Point, b: Point, c: Point, d: Point) {
-  const abC = orientation(a, b, c)
-  const abD = orientation(a, b, d)
-  const cdA = orientation(c, d, a)
-  const cdB = orientation(c, d, b)
-  return abC !== abD && cdA !== cdB
-}
-
-function segmentIntersectsRect(start: Point, end: Point, rect: Rect) {
-  if (pointInRect(start, rect) || pointInRect(end, rect)) return true
-  const topLeft = { x: rect.left, y: rect.top }
-  const topRight = { x: rect.left + rect.width, y: rect.top }
-  const bottomLeft = { x: rect.left, y: rect.top + rect.height }
-  const bottomRight = { x: rect.left + rect.width, y: rect.top + rect.height }
-  return segmentsIntersect(start, end, topLeft, topRight)
-    || segmentsIntersect(start, end, topRight, bottomRight)
-    || segmentsIntersect(start, end, bottomRight, bottomLeft)
-    || segmentsIntersect(start, end, bottomLeft, topLeft)
-}
-
 function labelCandidateOrder(zone: Zone): LabelCandidate[] {
   return rightLabelCommunities.has(zone.community)
     ? ["right", "left", "below", "above"]
@@ -144,28 +116,6 @@ function curvePath(from: Zone, to: Zone) {
   return { d: `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`, cx, cy }
 }
 
-function routeSegments(moves: RebalanceMove[], zoneMap: Map<string, Zone>, width: number, height: number) {
-  const segments: Array<[Point, Point]> = []
-  for (const move of moves) {
-    const from = zoneMap.get(move.source)
-    const to = zoneMap.get(move.destination)
-    if (!from || !to) continue
-    const { cx, cy } = curvePath(from, to)
-    let previous = { x: from.x * width / 100, y: from.y * height / 100 }
-    for (let step = 1; step <= 20; step += 1) {
-      const t = step / 20
-      const inverseT = 1 - t
-      const next = {
-        x: (inverseT * inverseT * from.x + 2 * inverseT * t * cx + t * t * to.x) * width / 100,
-        y: (inverseT * inverseT * from.y + 2 * inverseT * t * cy + t * t * to.y) * height / 100,
-      }
-      segments.push([previous, next])
-      previous = next
-    }
-  }
-  return segments
-}
-
 function detailPlacement(zone: Zone, radius: number) {
   const placeLeft = zone.x > 68
   const placeAbove = zone.y > 76
@@ -220,7 +170,6 @@ export function FleetMap({ mode, zones: baseZones, moves }: FleetMapProps) {
             return { left: bounds.left - mapBounds.left, top: bounds.top - mapBounds.top, width: bounds.width, height: bounds.height }
           })
         : []
-      const arcSegments = mode === "proposed" ? routeSegments(moves, zoneMap, mapBounds.width, mapBounds.height) : []
       const placedBounds: Rect[] = []
       const nextPositions = new Map<string, LabelPosition>()
       const orderedZones = [...zones].sort((a, b) => a.y - b.y || b.x - a.x || a.community.localeCompare(b.community))
@@ -241,8 +190,7 @@ export function FleetMap({ mode, zones: baseZones, moves }: FleetMapProps) {
           .find((candidate) => isInsideViewport(candidate, mapBounds.width, mapBounds.height)
             && !placedBounds.some((placed) => rectsIntersect(candidate, placed))
             && !Array.from(circleBounds.entries()).some(([id, circle]) => id !== zone.id && rectsIntersect(candidate, circle))
-            && !badgeBounds.some((badge) => rectsIntersect(candidate, badge))
-            && !arcSegments.some(([start, end]) => segmentIntersectsRect(start, end, candidate)))
+            && !badgeBounds.some((badge) => rectsIntersect(candidate, badge)))
 
         if (position) {
           nextPositions.set(zone.id, position)
