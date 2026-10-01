@@ -27,7 +27,7 @@ export function MapPanel({ mode, onModeChange, analysis, error }: MapPanelProps)
           </div>
         </div>
       </div>
-      <div data-tour="fleet-map" className="relative min-h-0 flex-1">
+      <div data-tour="fleet-map" className="relative min-h-0 flex-1 overflow-x-auto">
         {analysis ? <FleetMap mode={mode} zones={analysis.zones} moves={analysis.moves} /> : <div className="flex h-full items-center justify-center rounded-lg border border-white/10 bg-[#0a0c0f] text-sm text-zinc-500">{error ?? "Running live analysis…"}</div>}
       </div>
     </div>

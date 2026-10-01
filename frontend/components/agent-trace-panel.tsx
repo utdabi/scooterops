@@ -1,4 +1,5 @@
-import { CheckCircle2, CircleDashed, Loader2, ShieldCheck, XCircle } from "lucide-react"
+import { ArrowLeft, ArrowRight, CheckCircle2, CircleDashed, Loader2, ShieldCheck, XCircle } from "lucide-react"
+import { useState } from "react"
 import { type AnalysisResult, type TraceStep } from "@/lib/fleet-data"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
@@ -24,8 +25,46 @@ function formatTraceTime(timestamp: string) {
 }
 
 export function AgentTracePanel({ analysis, isRefreshing, error }: AgentTracePanelProps) {
+  const [view, setView] = useState<"agent" | "movements">("agent")
   const traceSteps = analysis?.agent.trace ?? []
   const approved = analysis?.validation.status === "APPROVED"
+
+  if (view === "movements") {
+    return (
+      <div data-tour="agent-trace" className="flex h-full flex-col border-l border-white/10 bg-[#0b0d10]">
+        <div className="border-b border-white/10 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setView("agent")}
+            className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-300 transition-colors hover:text-cyan-300"
+          >
+            <ArrowLeft className="size-4" />
+            Proposed movements
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          {analysis?.moves.length ? <div className="space-y-2">
+            {analysis.moves.map((move) => (
+              <div key={move.id} className="flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2.5">
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-zinc-200">{move.source}</span>
+                <ArrowRight className="size-3 shrink-0 text-cyan-400" />
+                <span className="min-w-0 flex-1 truncate text-right text-xs font-medium text-zinc-200">{move.destination}</span>
+                <span className="ml-1 shrink-0 rounded-full bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[10px] text-cyan-300">{move.scooters}</span>
+              </div>
+            ))}
+          </div> : <p className="text-xs text-zinc-500">No proposed movements are available.</p>}
+        </div>
+
+        <div className="border-t border-white/10 px-4 py-3">
+          <p className="text-[10px] uppercase tracking-wider text-zinc-500">Plan summary</p>
+          <p className="mt-1 text-xs tabular-nums text-zinc-300">
+            {analysis ? `${analysis.summary.total_scooters_moved} scooters across ${analysis.moves.length} movements` : "No plan available"}
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div data-tour="agent-trace" className="flex h-full flex-col border-l border-white/10 bg-[#0b0d10]">
@@ -70,7 +109,14 @@ export function AgentTracePanel({ analysis, isRefreshing, error }: AgentTracePan
         )}>
           <ShieldCheck className={`size-5 shrink-0 ${approved ? "text-emerald-400" : "text-zinc-500"}`} />
           <div>
-            <p className={`text-sm font-semibold ${approved ? "text-emerald-300" : "text-zinc-400"}`}>{analysis?.validation.status ?? "PENDING"}</p>
+            {approved ? <button
+              type="button"
+              onClick={() => setView("movements")}
+              className="flex items-center gap-1.5 text-sm font-semibold text-emerald-300 transition-colors hover:text-cyan-300"
+            >
+              View movements
+              <ArrowRight className="size-3.5" />
+            </button> : <p className="text-sm font-semibold text-zinc-400">{analysis?.validation.status ?? "PENDING"}</p>}
             <p className="text-xs text-zinc-500">{error ?? (analysis ? "Move budget, fleet conservation, source inventory, and imbalance improvement validated." : "Validation result will appear after the workflow completes")}</p>
           </div>
         </div>
