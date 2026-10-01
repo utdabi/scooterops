@@ -126,6 +126,10 @@ function gapTone(shareGapPctPoints: number, maxGap: number) {
   return "balanced"
 }
 
+function formatSignedGap(shareGapPctPoints: number) {
+  return `${shareGapPctPoints >= 0 ? "+" : "−"}${Math.abs(shareGapPctPoints).toFixed(1)}`
+}
+
 function curvePath(from: Zone, to: Zone) {
   const mx = (from.x + to.x) / 2
   const my = (from.y + to.y) / 2
@@ -303,6 +307,7 @@ export function FleetMap({ mode, zones: baseZones, moves }: FleetMapProps) {
           const radius = 3.2 + 6 * zone.available_scooters / maxCount
           const tone = gapTone(zone.share_gap_pct_points, maxGap)
           const toneClass = tone === "under" ? "border-red-500/40 bg-red-500/10 text-red-300" : tone === "gap" ? "border-amber-500/40 bg-amber-500/10 text-amber-300" : tone === "over" ? "border-sky-500/40 bg-sky-500/10 text-sky-300" : "border-white/15 bg-white/5 text-zinc-300"
+          const gapTextClass = tone === "under" ? "text-red-300" : tone === "gap" ? "text-amber-300" : tone === "over" ? "text-sky-300" : "text-zinc-300"
           const labelPosition = labelPositions.get(zone.id)
           const alignmentClass = labelPosition?.alignment === "right" ? "items-end text-right" : labelPosition?.alignment === "left" ? "items-start text-left" : "items-center text-center"
           const labelStyle: CSSProperties = labelPosition
@@ -327,7 +332,10 @@ export function FleetMap({ mode, zones: baseZones, moves }: FleetMapProps) {
               setSelectedZoneId(zone.id)
             }}
           >
-            <span className={cn("whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none tabular-nums", toneClass)}>{zone.available_scooters} scooters</span>
+            <span className="flex items-center gap-1.5 whitespace-nowrap">
+              <span className={cn("rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none tabular-nums", toneClass)}>{zone.available_scooters} scooters</span>
+              <span className={cn("text-[10px] font-medium leading-none tabular-nums", gapTextClass)}>Gap {formatSignedGap(zone.share_gap_pct_points)} pp</span>
+            </span>
             <span className="whitespace-nowrap text-[9px] font-semibold uppercase tracking-wider text-zinc-400">{zone.community}</span>
           </button>
         })}
@@ -348,7 +356,7 @@ export function FleetMap({ mode, zones: baseZones, moves }: FleetMapProps) {
             <div className="mt-2 space-y-0.5 text-[10px] leading-4 text-zinc-400">
               <div>Demand share: <span className="tabular-nums text-zinc-200">{activeZone.predicted_demand_share_pct.toFixed(1)}%</span></div>
               <div>Supply share: <span className="tabular-nums text-zinc-200">{activeZone.supply_share_pct.toFixed(1)}%</span></div>
-              <div>Gap: <span className="tabular-nums text-zinc-200">{activeZone.share_gap_pct_points >= 0 ? "+" : ""}{activeZone.share_gap_pct_points.toFixed(1)} pp</span></div>
+              <div>Gap: <span className="tabular-nums text-zinc-200">{formatSignedGap(activeZone.share_gap_pct_points)} pp</span></div>
               <div>Status: <span className="text-zinc-200">{status}</span></div>
             </div>
           </div>

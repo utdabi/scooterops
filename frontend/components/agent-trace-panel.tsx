@@ -123,8 +123,15 @@ export function AgentTracePanel({ analysis, isRefreshing, error }: AgentTracePan
       </div>
 
       <div className="border-t border-white/10 px-4 py-3">
-        <p className="text-[10px] uppercase tracking-wider text-zinc-500">Solver</p>
-        <p className="mt-1 font-mono text-xs text-zinc-400">scipy.optimize.milp</p>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-zinc-500">Gap legend</p>
+          <p className="mt-1 text-xs text-zinc-400">Gap = demand share − supply share</p>
+          <p className="mt-0.5 text-[10px] text-zinc-500">+ under-supplied · − over-supplied</p>
+        </div>
+        <div className="mt-3 border-t border-white/10 pt-3">
+          <p className="text-[10px] uppercase tracking-wider text-zinc-500">Solver</p>
+          <p className="mt-1 font-mono text-xs text-zinc-400">scipy.optimize.milp</p>
+        </div>
       </div>
     </div>
   )
