@@ -1,0 +1,3 @@
+$ next start -- -p 3001
+Invalid project directory provided, no such directory: E:\scooterops\frontend\-p
+[ELIFECYCLE] Command failed with exit code 1.

@@ -35,10 +35,32 @@ current = forecast[
 ].copy()
 
 if current.empty:
-    raise RuntimeError(
-        f"No seasonal forecast found for "
-        f"weekday={weekday}, hour={hour}"
+    weekday_forecast = forecast[
+        forecast["weekday"] == weekday
+    ]
+
+    if weekday_forecast.empty:
+        raise RuntimeError(
+            f"No seasonal forecast found for "
+            f"weekday={weekday}; no fallback hour is available"
+        )
+
+    nearest_hour = min(
+        weekday_forecast["hour"].unique(),
+        key=lambda forecast_hour: (
+            abs(int(forecast_hour) - hour),
+            int(forecast_hour),
+        ),
     )
+
+    print(
+        f"No forecast for weekday={weekday}, hour={hour}; "
+        f"using nearest available hour={nearest_hour}"
+    )
+
+    current = weekday_forecast[
+        weekday_forecast["hour"] == nearest_hour
+    ].copy()
 
 
 # Join live Lime supply

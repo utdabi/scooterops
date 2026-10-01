@@ -10,16 +10,10 @@ interface FleetMapProps {
   moves: RebalanceMove[]
 }
 
-const rightLabelCommunities = new Set([
-  "Edgewater",
-  "Uptown",
-  "Lake View",
-  "Lincoln Park",
-])
-
 const zoneCircleScale = 0.5625
 const labelViewportInset = 8
 const labelGap = 8
+const rightLabelZoneThreshold = 70
 
 type Rect = { left: number; top: number; width: number; height: number }
 type Point = { x: number; y: number }
@@ -31,7 +25,7 @@ function rectsIntersect(a: Rect, b: Rect) {
 }
 
 function labelCandidateOrder(zone: Zone): LabelCandidate[] {
-  return rightLabelCommunities.has(zone.community)
+  return zone.x >= rightLabelZoneThreshold
     ? ["right", "left", "below", "above"]
     : ["below", "right", "left", "above"]
 }
@@ -41,7 +35,7 @@ function labelCandidatePosition(zone: Zone, candidate: LabelCandidate, center: P
 
   switch (candidate) {
     case "right":
-      return { left: center.x + radius.x + labelGap - (zone.community === "Lake View" ? 30 : 0), top: center.y - label.height / 2 + verticalNudge, width: label.width, height: label.height, alignment: "left" }
+      return { left: center.x + radius.x + labelGap, top: center.y - label.height / 2 + verticalNudge, width: label.width, height: label.height, alignment: "left" }
     case "left":
       return { left: center.x - radius.x - labelGap - label.width + (zone.community === "Logan Square" ? 10 : 0), top: center.y - label.height / 2 + verticalNudge, width: label.width, height: label.height, alignment: "right" }
     case "above":

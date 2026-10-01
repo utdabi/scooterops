@@ -28,6 +28,12 @@ export function AgentTracePanel({ analysis, isRefreshing, error }: AgentTracePan
   const [view, setView] = useState<"agent" | "movements">("agent")
   const traceSteps = analysis?.agent.trace ?? []
   const approved = analysis?.validation.status === "APPROVED"
+  const proposedMoves = [...(analysis?.moves ?? [])].sort(
+    (a, b) =>
+      a.source.localeCompare(b.source) ||
+      a.destination.localeCompare(b.destination) ||
+      a.id.localeCompare(b.id),
+  )
 
   if (view === "movements") {
     return (
@@ -44,8 +50,8 @@ export function AgentTracePanel({ analysis, isRefreshing, error }: AgentTracePan
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4">
-          {analysis?.moves.length ? <div className="space-y-2">
-            {analysis.moves.map((move) => (
+          {proposedMoves.length ? <div className="space-y-2">
+            {proposedMoves.map((move) => (
               <div key={move.id} className="flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2.5">
                 <span className="min-w-0 flex-1 truncate text-xs font-medium text-zinc-200">{move.source}</span>
                 <ArrowRight className="size-3 shrink-0 text-cyan-400" />
