@@ -1,40 +1,58 @@
 # ScooterOps
 
-Live scooter fleet intelligence for Chicago.
+**Live fleet conditions → optimized scooter movements → independently validated plan**
 
-ScooterOps combines **live Lime GBFS supply**, **historical seasonal demand**, a **50-scooter MILP rebalancing optimizer**, independent validation, and **Amazon Bedrock** orchestration to produce an operator-ready fleet movement plan.
+ScooterOps is a live scooter fleet rebalancing system for Chicago.
+
+It combines **Lime’s live scooter availability**, **seasonal demand forecasting**, mathematical optimization, independent validation, and **Amazon Bedrock** orchestration to answer a practical operations question:
+
+> **What should we move, where should it go, and does the move actually improve the fleet?**
 
 **Live app:**  
 https://sc-a24edf9151b2402b82e78fb9aa06fd49.ecs.us-east-2.on.aws/
 
+**Demo video:**  
+https://www.youtube.com/watch?v=aTYBKz-0XVM
+
+## What ScooterOps does
+
+ScooterOps is not another fleet map.
+
+When a plan is generated, it:
+
+1. Reads the current Lime scooter fleet.
+2. Forecasts demand share across 10 Chicago community areas.
+3. Compares predicted demand with current supply.
+4. Identifies relatively over- and under-supplied areas.
+5. Optimizes exactly **50 scooter movements**.
+6. Validates source inventory, fleet conservation, movement budget, and imbalance improvement.
+7. Returns the validated plan for operator review.
+
+The result changes as fleet conditions change.
+
 ## How it works
 
 ```text
-Live Lime supply
-      +
+Live Lime scooter availability
+        +
 Historical Fall trips
-      ↓
+        ↓
 Seasonal demand-share forecast
-      ↓
-Demand vs supply gap
-      ↓
-50-scooter MILP optimizer
-      ↓
+        ↓
+Demand vs. supply gap
+        ↓
+50-scooter optimizer
+        ↓
 Independent validator
-      ↓
+        ↓
 Amazon Bedrock
-      ↓
+        ↓
+FastAPI backend
+        ↓
 Next.js command center
 ```
 
-When **Refresh Plan** runs, ScooterOps:
-
-1. Reads the current Lime fleet.
-2. Forecasts demand share across 10 Chicago community areas.
-3. Identifies relatively over- and under-supplied areas.
-4. Optimizes exactly 50 scooter movements.
-5. Validates inventory, fleet conservation, movement budget, and imbalance improvement.
-6. Returns the plan for operator review.
+Amazon Bedrock coordinates the analytical workflow, while forecasting, optimization, and validation remain separate and inspectable components.
 
 ## Forecast validation
 
@@ -46,22 +64,24 @@ The production model uses Fall 2023 and Fall 2024 Lime trips and was evaluated o
 | Fall 2024 benchmark | 2.60 pp |
 | **Fall 2023–2024 model** | **2.37 pp** |
 
-On that holdout, the seasonal model reduced error by about **12% versus the July baseline**.
+On that holdout, the seasonal model reduced mean absolute spatial demand-share error by about **12% versus the July baseline**.
 
-## Optimization
+## Optimization and validation
 
-ScooterOps uses `scipy.optimize.milp`.
+ScooterOps uses `scipy.optimize.milp` to generate the rebalancing plan.
 
-Constraints include:
+The optimizer enforces:
 
 - exactly 50 scooters moved
-- integer movements
+- integer-valued movements
 - source inventory limits
 - fleet conservation
 
-Distance is based on **community-area centroids**, not road-network distance.
+Movement distance is based on **Chicago community-area centroids**, not road-network driving distance.
 
-## AWS
+The optimizer does not approve its own result. A separate validation step checks the plan and only returns **APPROVED** when the required constraints pass and spatial imbalance improves.
+
+## AWS deployment
 
 ```text
 GitHub
@@ -71,36 +91,38 @@ AWS CodeBuild
 Amazon ECR
   ↓
 Amazon ECS Express Mode
+  ↓
+Public HTTPS application
 ```
 
 AWS services used:
 
-- Amazon Bedrock
-- Amazon ECS Express Mode
-- Amazon ECR
-- AWS CodeBuild
-- AWS IAM
-- Amazon CloudWatch
+- **Amazon Bedrock** — workflow orchestration
+- **Amazon ECS Express Mode** — frontend and backend deployment
+- **Amazon ECR** — container images
+- **AWS CodeBuild** — builds from GitHub
+- **AWS IAM** — runtime permissions
+- **Amazon CloudWatch** — logs and observability
 
-The frontend is Next.js. The backend is FastAPI.
+The frontend is built with **Next.js** and the backend with **FastAPI**.
 
 ## Built with Codex
 
-Codex was used during development for implementation, debugging, testing, and AWS deployment.
+Codex was used throughout development for implementation, debugging, testing, and AWS deployment.
 
-One important iteration was replacing an initial July-based demand model after questioning whether it was appropriate for a Fall deployment. The final version uses same-season historical data and held-out validation.
+The coding-agent environment was also connected to AWS through the AWS MCP setup during development.
 
-The production application uses ECS IAM task-role credentials. The development environment was also connected to AWS through the AWS MCP setup.
+The final production application uses standard ECS task-role credentials for AWS access.
 
 ## Run locally
 
-Backend:
+### Backend
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn api:app --app-dir backend --reload --host 127.0.0.1 --port 8000
 ```
 
-Frontend:
+### Frontend
 
 ```powershell
 cd frontend
